@@ -291,6 +291,13 @@ public class DigitalCinemaName {
         e2 = mGenericElement("meta:Chain", optChain);
         e.appendChild(e2);
 
+        // Distributor
+        String longName = Studio.getLongName(dcncStudio);
+        String s = String.format("%s (%s)", dcncStudio,
+                                 (dcncFacility == null) ? "unknown" : longName);
+        e2 = mGenericElement("meta:Distributor", s);
+        e.appendChild(e2);
+
         // Luminance
         e2 = mGenericElement("meta:Luminance", optLuminance);
         Attr units = dom.createAttribute("units");
@@ -299,6 +306,17 @@ public class DigitalCinemaName {
         e.appendChild(e2);
 
         e2 = mGenericElement("meta:MainSoundConfiguration", dcncAudio);
+        e.appendChild(e2);
+
+        s = "";
+        for (int i=1; i<lang.length; i++) {
+            if (lang[i] != null) {
+                s += lang[i];
+                if (i != lang.length-1 && lang[i+1] != null)
+                    s += " ";
+            }
+        }
+        e2 = mGenericElement("meta:MainSubtitleLanguageList", s);
         e.appendChild(e2);
 
         return e;
@@ -370,7 +388,7 @@ public class DigitalCinemaName {
 
     protected Element mIssuer() throws Exception {
         String longName = Facility.getLongName(dcncFacility);
-        String s = String.format("%3s (%s)", dcncFacility,
+        String s = String.format("%s (%s)", dcncFacility,
                                  (dcncFacility == null) ? "unknown" : longName);
         return mGenericElement("Issuer", s);                           
     }
@@ -423,7 +441,7 @@ public class DigitalCinemaName {
             root.setAttributeNode(xmlns);
 
             xmlns = dom.createAttribute("xsi:schemaLocation");
-            xmlns.setValue(cplns + " " + "./CPL-S429-7-2006.xsd " + metans + "./CPL-S429-16-2014.xsd");
+            xmlns.setValue(cplns + " " + "./CPL-S429-7-2006.xsd " + metans + " ./CPL-S429-16-2014.xsd");
             root.setAttributeNode(xmlns);
 
             dom.appendChild(root);
