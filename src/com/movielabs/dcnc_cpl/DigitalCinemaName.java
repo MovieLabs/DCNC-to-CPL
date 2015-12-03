@@ -33,6 +33,27 @@ public class DigitalCinemaName {
     private boolean optTemp, optPre, optRedBand, opt3D;
     private String optLuminance, optFrameRate, optChain;
 
+    private static Map<String, Integer> storeWidth;
+    private static Map<String, Integer> storeHeight;
+
+    static {
+        storeWidth = new HashMap<String, Integer>();
+        storeWidth.put("F2K", 1998);
+        storeWidth.put("S2K", 2048);
+        storeWidth.put("C2K", 2048);
+        storeWidth.put("F4K", 3996);
+        storeWidth.put("S4K", 4096);
+        storeWidth.put("C4K", 4096);
+ 
+        storeHeight = new HashMap<String, Integer>();
+        storeHeight.put("F2K", 1080);
+        storeHeight.put("S2K",  858);
+        storeHeight.put("C2K", 1080);
+        storeHeight.put("F4K", 2160);
+        storeHeight.put("S4K", 1716);
+        storeHeight.put("C4K", 2160);
+    }
+
     private final static String[] field = {
         "Title", "ContentType", "AspectRatio", "Language", "Territory", "Audio",
         "Resolution", "Studio", "Date", "Facility", "Standard", "Package"};
@@ -53,6 +74,21 @@ public class DigitalCinemaName {
         FrameRate
     };
 
+    private String decodeLuminance(String l) {
+        switch(l.length()) {
+        case 1:
+            return l;
+		case 2:
+            if (l.substring(0, 1).equals("1"))
+                return l;
+            else
+                return l.substring(0,1) + "." + l.substring(1);
+		default:
+            System.out.println("Unknown luminance value: " + l);
+            return l;
+        }
+    }
+
     private void parseContentType(String s) {
         if (verbose)
             System.out.println("Content Type = " + s);
@@ -68,6 +104,31 @@ public class DigitalCinemaName {
                 break;
             case "TSR":
                 contentKind = "teaser";
+                break;
+            case "PRO":
+                System.out.println("no SMPTE 429-7 equivalent for 'PRO': substituting 'teaser'");
+                contentKind = "teaser";
+                break;
+            case "TST":
+                contentKind = "test";
+                break;
+            case "RTG":
+                contentKind = "rating";
+                break;
+            case "SHR":
+                contentKind = "short";
+                break;
+            case "ADV":
+                contentKind = "advertisement";
+                break;
+            case "XSN":
+                contentKind = "transitional";
+                break;
+            case "PSA":
+                contentKind = "psa";
+                break;
+            case "POL":
+                contentKind = "policy";
                 break;
             default:
                 contentKind = "???";
@@ -110,7 +171,7 @@ public class DigitalCinemaName {
                         if (m.matches()) { // Luminance
                             if (OPT.Luminance.ordinal() < nextOpt.ordinal())
                                 System.out.println("'Luminance' Option out of order");
-                            optLuminance = m.group(1);
+                            optLuminance = decodeLuminance(m.group(1));
                             nextOpt = OPT.FrameRate;
                         } else { // FrameRate
                             pat = Pattern.compile("^(\\d+)$");
@@ -204,6 +265,8 @@ public class DigitalCinemaName {
     private void parseResolution(String s) {
         if (verbose)
             System.out.println("Resolution = " + s);
+        if (!(s.equals("2K") || s.equals("4K")))
+            System.out.println("Invalid resolution: " + s);
         dcncResolution = s;
     }
 
@@ -237,7 +300,7 @@ public class DigitalCinemaName {
     private void parseStandard(String s) {
         if (verbose)
             System.out.println("Standard = " + s);
-        dcncResolution = s;
+        dcncStandard = s;
     }
 
     private void parsePackage(String s) {
@@ -260,12 +323,15 @@ public class DigitalCinemaName {
             switch(dcncAspect) {
             case "F":
                 s = "185 100";
+                dcncRatio = "185";
                 break;
             case "S":
                 s = "239 100";
+                dcncRatio = "239";
                 break;
             case "C":
                 s = "190 100";
+                dcncRatio = "190";
                 break;
             default:
                 s = "---invalid---";
@@ -286,6 +352,9 @@ public class DigitalCinemaName {
         // Release Territory
         Element e2 = mGenericElement("meta:ReleaseTerritory", dcncTerritory);
         e.appendChild(e2);
+
+        // Version Number
+        e.appendChild(mVersionNumber(contentVersion));
 
         // Chain
         e2 = mGenericElement("meta:Chain", optChain);
@@ -308,6 +377,35 @@ public class DigitalCinemaName {
         e2 = mGenericElement("meta:MainSoundConfiguration", dcncAudio);
         e.appendChild(e2);
 
+        // MainPictureStoredArea
+        e2 = dom.createElement("meta:MainPictureStoredArea");
+        Element e3 = dom.createElement("Width");
+        Text tmp = dom.createTextNode(storeWidth.get(dcncAspect + dcncResolution).toString());
+        e3.appendChild(tmp);
+        e2.appendChild(e3);
+        e3 = dom.createElement("Height");
+        tmp = dom.createTextNode(storeHeight.get(dcncAspect + dcncResolution).toString());
+        e3.appendChild(tmp);
+        e2.appendChild(e3);
+        e.appendChild(e2);
+
+        // MainPictureActiveArea
+        e2 = dom.createElement("meta:MainPictureActiveArea");
+        e3 = dom.createElement("Width");
+        double ar = Double.parseDouble(dcncRatio);
+        int w = storeWidth.get(dcncAspect + dcncResolution);
+        int h = storeHeight.get(dcncAspect + dcncResolution);
+        w = (int) (h * ar);
+        tmp = dom.createTextNode(String.format("%d", w));
+        e3.appendChild(tmp);
+        e2.appendChild(e3);
+        e3 = dom.createElement("Height");
+        tmp = dom.createTextNode(storeHeight.get(dcncAspect + dcncResolution).toString());
+        e3.appendChild(tmp);
+        e2.appendChild(e3);
+        e.appendChild(e2);
+
+        // Subtitles
         s = "";
         for (int i=1; i<lang.length; i++) {
             if (lang[i] != null) {
@@ -319,6 +417,25 @@ public class DigitalCinemaName {
         e2 = mGenericElement("meta:MainSubtitleLanguageList", s);
         e.appendChild(e2);
 
+        return e;
+    } /* mMetadata() */
+
+    protected Element mMainPicture(String mpname) throws DOMException, Exception {
+        // MainPicture or MainStereoscopic picture
+        Element e = dom.createElement(mpname);
+        e.appendChild(mSynthComment("Id"));
+        e.appendChild(mGenericElement("Id", uuid()));
+        e.appendChild(mSynthComment("EditRate"));
+        e.appendChild(mGenericElement("EditRate", "1 1"));
+        e.appendChild(mSynthComment("IntrinsicDuration"));
+        e.appendChild(mGenericElement("IntrinsicDuration", "0"));
+        if (optFrameRate == null) {
+            e.appendChild(mSynthComment("FrameRate"));
+            e.appendChild(mGenericElement("FrameRate", "1 1"));
+        } else {
+            e.appendChild(mGenericElement("FrameRate", optFrameRate + " 1"));
+        }
+        e.appendChild(mAspectRatio());
         return e;
     }
 
@@ -333,22 +450,8 @@ public class DigitalCinemaName {
         e3 = dom.createElement("AssetList");
         e2.appendChild(e3);
 
-        // MainPicture
-        e4 = dom.createElement("MainPicture");
-        e4.appendChild(mSynthComment("Id"));
-        e4.appendChild(mGenericElement("Id", uuid()));
-        e4.appendChild(mSynthComment("EditRate"));
-        e4.appendChild(mGenericElement("EditRate", "1 1"));
-        e4.appendChild(mSynthComment("IntrinsicDuration"));
-        e4.appendChild(mGenericElement("IntrinsicDuration", "0"));
-        if (optFrameRate == null) {
-            e4.appendChild(mSynthComment("FrameRate"));
-            e4.appendChild(mGenericElement("FrameRate", "1 1"));
-        } else {
-            e4.appendChild(mGenericElement("FrameRate", optFrameRate + " 1"));
-        }
-        e4.appendChild(mAspectRatio());
-        e3.appendChild(e4);
+        if (!opt3D)
+            e3.appendChild(mMainPicture("MainPicture"));
 
         // MainSound
         e4 = dom.createElement("MainSound");
@@ -373,6 +476,9 @@ public class DigitalCinemaName {
             e3.appendChild(e4);
         }
 
+        if (opt3D)
+            e3.appendChild(mMainPicture("msp:MainStereoscopicPicture"));
+
         e3.appendChild(mMetadata());
 
         return e;
@@ -380,8 +486,20 @@ public class DigitalCinemaName {
 
     protected Element mContentVersion() throws Exception {
         Element e = dom.createElement("ContentVersion");
-        e.appendChild(mGenericElement("Id", contentVersion));
-        e.appendChild(mGenericElement("LabelText", "dervied from DCNC version"));
+        e.appendChild(mGenericElement("Id", dcncPackage));
+        e.appendChild(mGenericElement("LabelText", "Package Type"));
+
+        return e;
+    }
+
+    protected Element mVersionNumber(String v) throws Exception {
+        Element e = dom.createElement("VersionNumber");
+        Text tmp = dom.createTextNode(v);
+        String stat = (optPre) ? "pre" : ((optTemp) ? "temp" : "final");
+        Attr status = dom.createAttribute("status");
+        status.setValue(stat);
+        e.setAttributeNode(status);
+        e.appendChild(tmp);
 
         return e;
     }
@@ -407,8 +525,9 @@ public class DigitalCinemaName {
         return tia;
     } 
 
-    private static final String cplns = "http://www.smpte-ra.org/schemas/429-7/2006/CPL";
+    private static final String cplns  = "http://www.smpte-ra.org/schemas/429-7/2006/CPL";
     private static final String metans = "http://www.smpte-ra.org/schemas/429-16/2014/CPL-Metadata";
+    private static final String mspns  = "http://www.smpte-ra.org/schemas/429-10/2008/Main-Stereo-Picture-CPL";
 
     private Document makeXML() throws Exception {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
@@ -437,11 +556,16 @@ public class DigitalCinemaName {
             root.setAttributeNode(xmlns);
 
             xmlns = dom.createAttribute("xmlns:meta");
-            xmlns.setValue("http://www.smpte-ra.org/schemas/429-16/2014/CPL-Metadata");
+            xmlns.setValue(metans);
+            root.setAttributeNode(xmlns);
+
+            xmlns = dom.createAttribute("xmlns:msp");
+            xmlns.setValue(mspns);
             root.setAttributeNode(xmlns);
 
             xmlns = dom.createAttribute("xsi:schemaLocation");
-            xmlns.setValue(cplns + " " + "./CPL-S429-7-2006.xsd " + metans + " ./CPL-S429-16-2014.xsd");
+            xmlns.setValue(cplns + " " + "./CPL-S429-7-2006.xsd " + metans + " ./CPL-S429-16-2014.xsd " + 
+                           mspns + " ./CPL-S429-10-2008.xsd");
             root.setAttributeNode(xmlns);
 
             dom.appendChild(root);
@@ -459,7 +583,7 @@ public class DigitalCinemaName {
             root.appendChild(mIssuer());
 
             // Creator
-            root.appendChild(mGenericElement("Creator", "dcnc Utility v0.1 by MovieLabs"));
+            root.appendChild(mGenericElement("Creator", "DCNC Utility v0.2 by MovieLabs"));
 
             // ContentTitleText
             root.appendChild(mGenericElement("ContentTitleText", dcncTitle));
