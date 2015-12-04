@@ -1,19 +1,34 @@
 package com.movielabs.dcnc_cpl;
 
-import java.io.*;
-import java.util.*;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
-import javax.xml.transform.*;
+import javax.xml.xpath.XPathExpressionException;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import org.w3c.dom.Attr;
+import org.w3c.dom.DOMException;
+import org.w3c.dom.Comment;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Text;
 
-import org.w3c.dom.*;
 
 public class DigitalCinemaName {
     private boolean verbose = false;
@@ -21,7 +36,7 @@ public class DigitalCinemaName {
     private Element root;
 
     private String dcncOriginal, dcncTitle, dcncContentType, dcncAspect, dcncRatio,
-        dcncLanguage, dcncTerritory, dcncRating, dcncAudio, dcncResolution,
+        dcncLanguage, dcncTerritory, dcncRating, dcncRatingURI, dcncAudio, dcncResolution,
         dcncStudio, dcncDate, dcncFacility, dcncStandard, dcncPackage;
     private static final String[] ISO3166 = Locale.getISOCountries();
 
@@ -228,11 +243,27 @@ public class DigitalCinemaName {
         return true;
     }
 
-    private void parseTerritory(String s) {
+    private String parseRating(String territory, String rating) throws XPathExpressionException {
+        Ratings r = new Ratings("CMR_Ratings_v2.2.6.xml");
+        Document rdom = r.getDOM();
+        return r.findRating(territory, rating);
+    }
+
+    private void parseTerritory(String s) throws XPathExpressionException {
         String[] tr = s.split("-");
         dcncTerritory = tr[0];
+        if (dcncTerritory.equals("UK")) {
+            System.out.println("Warning: mapping UK (invalid ISO3166-1) to GB");
+            dcncTerritory = "GB";
+        }
         badISO3166 = Arrays.binarySearch(ISO3166, dcncTerritory) == -1;
-        dcncRating = (tr.length == 2) ? tr[1] : null;
+        if (tr.length == 2) {
+            dcncRating = tr[1];
+            dcncRatingURI = parseRating(dcncTerritory, tr[1]);
+        } else {
+            dcncRating = null;
+            dcncRatingURI = null;
+        }
         if (verbose) {
             System.out.println("Territory: " + dcncTerritory + " Rating: " + dcncRating);
             if (badISO3166)
@@ -246,11 +277,12 @@ public class DigitalCinemaName {
         if (dcncRating != null) {
             Element e2 = dom.createElement("Rating");
             e.appendChild(e2);
-            if (dcncTerritory.equals("US"))
-                e2.appendChild(mGenericElement("Agency", "http://www.mpaa.org/2003-ratings"));
-            else
-                e2.appendChild(mGenericElement("Agency", 
-                                  "unknown territory: " + dcncTerritory + ")"));
+            e2.appendChild(mGenericElement("Agency", dcncRatingURI));
+            // if (dcncTerritory.equals("US"))
+            //     e2.appendChild(mGenericElement("Agency", "http://www.mpaa.org/2003-ratings"));
+            // else
+            //     e2.appendChild(mGenericElement("Agency", 
+            //                       "unknown territory: " + dcncTerritory + ")"));
             e2.appendChild(mGenericElement("Label", dcncRating));
         }
         return e;
@@ -635,7 +667,7 @@ public class DigitalCinemaName {
         }
     }
 
-    public void parse(String s) {
+    public void parse(String s) throws XPathExpressionException {
         dcncOriginal = s;
 
         Pattern pat = Pattern.compile("^([A-Za-z0-9-]+)_([A-Za-z0-9-]+)_([A-Za-z0-9-]+)_([A-Za-z0-9-]+)_" + 
